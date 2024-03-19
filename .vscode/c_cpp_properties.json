@@ -1,18 +1,16 @@
 {
-    "env": {
-      "defaultIncludes": ["${workspaceFolder}", "${workspaceFolder}/include"]
-    },
-    "configurations": [
+  "configurations": [
       {
-        "name": "shorty",
-        "intelliSenseMode": "clang-x64",
-        "compilerPath": "/usr/bin/g++",
-        "cStandard": "c23",
-        "cppStandard": "c++20",
-        "includePath": [
-          "${defaultIncludes}"
-      ]
+          "name": "shorty",
+          "intelliSenseMode": "clang-x64",
+          "compilerPath": "/usr/bin/g++",
+          "cStandard": "c23",
+          "cppStandard": "c++20",
+          "includePath": [
+              "${workspaceFolder}",
+              "${workspaceFolder}/include"
+          ]
       }
-    ],
-    "version": 4
-  }
+  ],
+  "version": 4
+}
