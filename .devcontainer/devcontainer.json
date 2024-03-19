@@ -1,0 +1,28 @@
+{
+	"dockerFile": "Dockerfile",
+	"remoteUser": "root",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cpptools",
+				"ms-vscode.cmake-tools",
+				"ms-vscode.cpptools-extension-pack",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"hediet.vscode-drawio",
+				"twxs.cmake",
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"shardulm94.trailing-spaces",
+				"redhat.vscode-yaml",
+				"ms-azuretools.vscode-docker",
+				"formulahendry.docker-explorer",
+				"donjayamanne.python-extension-pack"
+			]
+		}
+	},
+	"forwardPorts": [
+		8080,
+		3000
+	]
+}
