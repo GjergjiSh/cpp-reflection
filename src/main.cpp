@@ -14,43 +14,36 @@ struct memblock {
     std::vector<std::byte> data;
 };
 
-class CustomMemoryResource : public std::pmr::synchronized_pool_resource {
-private:
-    std::atomic<size_t> total_bytes_allocated { 0 };
+class CustomMemoryResource : public std::pmr::memory_resource {
+public:
+    CustomMemoryResource(std::pmr::memory_resource* upstream)
+        : current(upstream), null(std::pmr::null_memory_resource()) {}
 
 protected:
-    void* do_allocate(std::size_t bytes, std::size_t alignment) override
-    {
-        if (total_bytes_allocated + bytes > max_size) { throw std::bad_alloc(); }
-        total_bytes_allocated += bytes;
-        std::cout << "Allocating " << bytes << " bytes. Total allocated: " << total_bytes_allocated << std::endl;
-        return std::pmr::synchronized_pool_resource::do_allocate(bytes, alignment);
+    void* do_allocate(std::size_t bytes, std::size_t alignment) override {
+        void* result = current->allocate(bytes, alignment);
+        if (result == nullptr) {
+            current = null;
+            result = current->allocate(bytes, alignment);
+        }
+        return result;
     }
 
-    void do_deallocate(void* p, std::size_t bytes, std::size_t alignment) override
-    {
-        total_bytes_allocated -= bytes;
-        std::cout << "Deallocating " << bytes << " bytes. Total allocated: " << total_bytes_allocated << std::endl;
-        std::pmr::synchronized_pool_resource::do_deallocate(p, bytes, alignment);
+    void do_deallocate(void* p, std::size_t bytes, std::size_t alignment) override {
+        if (current == null) {
+            null->deallocate(p, bytes, alignment);
+        } else {
+            current->deallocate(p, bytes, alignment);
+        }
     }
 
-    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override
-    {
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
         return this == &other;
     }
 
-    size_t max_size = POOL_SIZE;
-
-public:
-    CustomMemoryResource(std::pmr::memory_resource* upstream)
-        : std::pmr::synchronized_pool_resource(std::pmr::pool_options(), upstream)
-    {
-    }
-
-    std::size_t get_total_bytes_allocated() const
-    {
-        return total_bytes_allocated.load();
-    }
+private:
+    std::pmr::memory_resource* current;
+    std::pmr::memory_resource* null;
 };
 
 struct hexdump {
@@ -109,13 +102,13 @@ public:
     Object(std::pmr::memory_resource* resource, size_t size)
         : resource(resource)
         , size(size)
-        , data(static_cast<std::byte*>(resource->allocate(size)))
+        , data(static_cast<std::byte*>(resource->allocate(size, alignof(std::byte))))
     {
     }
 
     ~Object()
     {
-        resource->deallocate(data, size);
+        resource->deallocate(data, size, alignof(std::byte));
     }
 
 private:
@@ -161,6 +154,18 @@ void operator delete(void* ptr, std::size_t size) noexcept {
     std::free(ptr);
 }
 
+/* 
+
+I apologize for misunderstanding your setup. If you're already using a pool resource and it's chained to a std::pmr::monotonic_buffer_resource, then the pool resource should be handling the deallocations and reusing the memory as expected.
+
+However, there's a catch. The std::pmr::unsynchronized_pool_resource and std::pmr::synchronized_pool_resource manage memory in blocks, and they don't return individual deallocated objects to their upstream resource. Instead, they keep them for future allocations of the same size. When a block is completely free, it can be returned to the upstream resource, but this only happens when the pool resource is released or when its release method is called.
+
+In your case, the pool resource is not returning the memory to the monotonic_buffer_resource because the blocks are not completely free. This is why you're getting a bad_alloc exception.
+
+If you want the memory to be returned to the monotonic_buffer_resource when objects are deallocated, you would need to call the release method of the pool resource. However, this would also deallocate all objects that are still using the pool resource, so you need to be careful when to call it.
+
+ */
+
 int main()
 {
     // HObject obj(1);
@@ -176,21 +181,26 @@ int main()
     // HObject obj5(4);
     // std::byte* byte = new std::byte(static_cast<std::byte>(1));
 
-    auto stackBuffer = new std::byte[1];
-    std::pmr::monotonic_buffer_resource upstream(stackBuffer, sizeof(stackBuffer));
+    auto stackBuffer = new std::byte[10];
+    std::pmr::monotonic_buffer_resource upstream(stackBuffer, 10, std::pmr::null_memory_resource());
     CustomMemoryResource resource(&upstream);
 
     Object obj(&resource, 1);
     {
-        Object obj2(&resource, 2);
+        Object obj2(&resource, 1);
     }
-    Object obj3(&resource, 5);
+    Object obj3(&resource, 4);
     {
-        Object obj4(&resource, 2);
+        Object obj4(&resource, 1);
     }
 
-    // There should be 4 free bytes left in the pool
-    Object obj5(&resource, 4);
+    Object obj5(&resource, 2);
+    Object obj6(&resource, 1);
+    Object obj7(&resource, 1);
+
+
+    // // There should be 4 free bytes left in the pool
+    // Object obj5(&resource, 4);
 
     // std::pmr::vector<std::byte*> allocated_bytes(&resource);
 
